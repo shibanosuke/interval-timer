@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>2分ループタイマー</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #1e1e1e;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            transition: background-color 0.3s ease;
+            overflow: hidden;
+        }
+        /* 10秒前の警告背景 */
+        body.warning {
+            background-color: #ff3b30;
+        }
+        .timer-container {
+            text-align: center;
+            width: 100%;
+            padding: 20px;
+        }
+        .time-display {
+            font-size: 22vw;
+            font-weight: bold;
+            font-variant-numeric: tabular-nums;
+            line-height: 1;
+            margin-bottom: 40px;
+            text-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        .btn-container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            width: 100%;
+            max-width: 340px;
+            margin: 0 auto;
+        }
+        button {
+            font-size: 16px;
+            font-weight: bold;
+            padding: 15px 10px;
+            border: none;
+            border-radius: 12px;
+            background-color: rgba(255, 255, 255, 0.15);
+            color: #ffffff;
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            transition: background 0.1s;
+            -webkit-tap-highlight-color: transparent;
+        }
+        button.restart {
+            grid-column: span 2;
+            background-color: #007aff;
+            font-size: 18px;
+        }
+        button:active {
+            background-color: rgba(255, 255, 255, 0.3);
+        }
+        button.restart:active {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+
+<div class="timer-container">
+    <div class="time-display" id="display">02:00</div>
+    <div class="btn-container">
+        <button class="restart" onclick="restartTimer()">リスタート</button>
+        <button onclick="adjustTime(1)">1秒早くする</button>
+        <button onclick="adjustTime(-1)">1秒遅くする</button>
+        <button onclick="adjustTime(5)">5秒早くする</button>
+        <button onclick="adjustTime(-5)">5秒遅くする</button>
+    </div>
+</div>
+
+<script>
+    const CYCLE_SECS = 120; // 2分
+    let targetTime = Date.now() + CYCLE_SECS * 1000;
+    let audioCtx = null;
+
+    const displayElement = document.getElementById('display');
+    const bodyElement = document.body;
+
+    // Web Audio APIの初期化
+    function initAudio() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+    }
+
+    // 基本のビープ音を鳴らす内部関数
+    function playTone(frequency, duration, startTime) {
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(frequency, startTime);
+        
+        gainNode.gain.setValueAtTime(0.2, startTime); // 音割れ防止のため音量を少し抑える
+        gainNode.gain.exponentialRampToValueAtTime(0.00001, startTime + duration);
+        
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        osc.start(startTime);
+        osc.stop(startTime + duration);
+    }
+
+    // 警告音（不協和音）を鳴らす関数
+    function playWarningChord(pipCount = 1) {
+        initAudio();
+        if (!audioCtx) return;
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+
+        const baseFreq = 1400; // 高い音（1400Hz）
+        const detuneFreq = 1483; // 半音上の音（短二度の不協和音）
+        const toneDuration = 0.25; // 「ピー」と伸ばす長さ（0.25秒）
+        const interval = 0.38; // 連打のときの間隔（音の長さ＋無音の隙間）
+
+        const now = audioCtx.currentTime;
+
+        // 指定された回数（1回または3回）分、不協和音を生成して時間差で再生
+        for (let i = 0; i < pipCount; i++) {
+            const timeOffset = now + (i * interval);
+            playTone(baseFreq, toneDuration, timeOffset);
+            playTone(detuneFreq, toneDuration, timeOffset);
+        }
+    }
+
+    // 通常のカウントダウン音（単音）
+    function playBeep(frequency = 880, duration = 0.08) {
+        initAudio();
+        if (!audioCtx) return;
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        playTone(frequency, duration, audioCtx.currentTime);
+    }
+
+    // メインのタイマーループ（ドリフト補正付き）
+    function tick() {
+        const now = Date.now();
+        let diffSecs = Math.ceil((targetTime - now) / 1000);
+
+        // ループ処理
+        if (diffSecs <= 0) {
+            while (targetTime <= now) {
+                targetTime += CYCLE_SECS * 1000;
+            }
+            diffSecs = Math.ceil((targetTime - now) / 1000);
+        }
+
+        // 表示の更新
+        const mins = Math.floor(diffSecs / 60);
+        const secs = diffSecs % 60;
+        displayElement.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+
+        // 音と背景の判定
+        if (diffSecs === 20) {
+            // 20秒前に不協和音で ピー（1回）
+            playWarningChord(1);
+        } else if (diffSecs === 10) {
+            // 10秒前に不協和音で ピー、ピー、ピー（3回）
+            bodyElement.classList.add('warning');
+            playWarningChord(3);
+        } else if (diffSecs < 10 && diffSecs > 0) {
+            // 9秒前〜1秒前はカウントダウンの通常単音（ピッ、ピッ…）
+            if (!bodyElement.classList.contains('warning')) {
+                bodyElement.classList.add('warning');
+            }
+            playBeep(880, 0.08); 
+        } else {
+            bodyElement.classList.remove('warning');
+        }
+
+        // 次の「ジャスト1秒」までの差分を計算してsetTimeout
+        const nextCheck = 1000 - ((Date.now() - now) % 1000);
+        setTimeout(tick, nextCheck);
+    }
+
+    // リスタート
+    function restartTimer() {
+        initAudio();
+        targetTime = Date.now() + CYCLE_SECS * 1000;
+        bodyElement.classList.remove('warning');
+        playBeep(660, 0.05);
+    }
+
+    // 時間の微調整
+    function adjustTime(seconds) {
+        initAudio();
+        targetTime -= seconds * 1000;
+        playBeep(660, 0.05);
+    }
+
+    // 初回起動
+    tick();
+</script>
+
+</body>
+</html>
