@@ -105,7 +105,7 @@
         osc.type = 'sine';
         osc.frequency.setValueAtTime(frequency, startTime);
         
-        gainNode.gain.setValueAtTime(0.2, startTime); // 音割れ防止のため音量を少し抑える
+        gainNode.gain.setValueAtTime(0.2, startTime); // 音量調整
         gainNode.gain.exponentialRampToValueAtTime(0.00001, startTime + duration);
         
         osc.connect(gainNode);
@@ -115,21 +115,21 @@
         osc.stop(startTime + duration);
     }
 
-    // 警告音（不協和音）を鳴らす関数
-    function playWarningChord(pipCount = 1) {
+    // 警告音（不協和音の3連打）を鳴らす関数
+    function playWarningChord3() {
         initAudio();
         if (!audioCtx) return;
         if (audioCtx.state === 'suspended') audioCtx.resume();
 
-        const baseFreq = 1400; // 高い音（1400Hz）
-        const detuneFreq = 1483; // 半音上の音（短二度の不協和音）
-        const toneDuration = 0.25; // 「ピー」と伸ばす長さ（0.25秒）
-        const interval = 0.38; // 連打のときの間隔（音の長さ＋無音の隙間）
+        const baseFreq = 1400; // 高い音
+        const detuneFreq = 1483; // 半音上の音
+        const toneDuration = 0.15; // 音自体の長さ
+        const interval = 0.20; // 次の音までの間隔（より短く設定）
 
         const now = audioCtx.currentTime;
 
-        // 指定された回数（1回または3回）分、不協和音を生成して時間差で再生
-        for (let i = 0; i < pipCount; i++) {
+        // 3回分、不協和音をタイトな間隔で生成
+        for (let i = 0; i < 3; i++) {
             const timeOffset = now + (i * interval);
             playTone(baseFreq, toneDuration, timeOffset);
             playTone(detuneFreq, toneDuration, timeOffset);
@@ -164,14 +164,14 @@
 
         // 音と背景の判定
         if (diffSecs === 20) {
-            // 20秒前に不協和音で ピー（1回）
-            playWarningChord(1);
+            // 20秒前に不協和音で ピーピーピー（3連打）
+            playWarningChord3();
         } else if (diffSecs === 10) {
-            // 10秒前に不協和音で ピー、ピー、ピー（3回）
+            // 10秒前に不協和音で ピーピーピー（3連打）
             bodyElement.classList.add('warning');
-            playWarningChord(3);
+            playWarningChord3();
         } else if (diffSecs < 10 && diffSecs > 0) {
-            // 9秒前〜1秒前はカウントダウンの通常単音（ピッ、ピッ…）
+            // 9秒前〜1秒前はカウントダウンの通常単音
             if (!bodyElement.classList.contains('warning')) {
                 bodyElement.classList.add('warning');
             }
